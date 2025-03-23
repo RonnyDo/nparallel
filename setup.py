@@ -7,7 +7,6 @@ setuptools.setup(
     name="Nparallel",        	 
     version="0.1.0",          
     author='Ronny Dobra',
-    author_email='Ronny Dobra <6539575+RonnyDo@users.noreply.github.com>',
     description='Speed up Nmap scans by running them in parallel',
     long_description=long_description,
     long_description_content_type="text/markdown",

@@ -8,7 +8,6 @@ git clone https://github.com/RonnyDo/nparallel
 cd nparallel
 pip install .
 
-
 # Variant B: Download raw script
 wget https://raw.githubusercontent.com/RonnyDo/nparallel/refs/heads/main/nparallel.py
 ```

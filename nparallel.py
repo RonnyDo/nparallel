@@ -14,6 +14,12 @@ import shutil
 import sys
 from itertools import repeat
 
+
+
+import operator ## for grouping operation
+import itertools ## for grouping operation
+import collections ## for creating a defaultdict
+
 class NmapCommand: 
     cmd_str = ""
 
@@ -49,20 +55,19 @@ class NmapScan:
     def get_id (self):
         return f"{str(self.ip)}_{self.nmap_cmd.get_id()}"
 
-    def run (self, tmp_dir):
+    def run (self, scan_cache_path):
         scan_id = self.get_id()
         # crat command
         command = "{} -oX {} -oN {} -oG {} {}".format(
             self.nmap_cmd.cmd_str,
-            os.path.join(tmp_dir, scan_id + ".xml"),
-            os.path.join(tmp_dir, scan_id + ".txt"),
-            os.path.join(tmp_dir, scan_id + ".grep"),
+            os.path.join(scan_cache_path, scan_id + ".xml"),
+            os.path.join(scan_cache_path, scan_id + ".txt"),
+            os.path.join(scan_cache_path, scan_id + ".grep"),
             self.ip,
         )
         # run command     
-        with open(os.path.join(tmp_dir, scan_id + ".log"), 'w') as log_file:
+        with open(os.path.join(scan_cache_path, scan_id + ".log"), 'w') as log_file:
             self.result = subprocess.run(command.split(), shell=False, stdout=log_file, stderr=log_file)
-
 
 
 
@@ -82,27 +87,35 @@ class Nparallel:
         parser = argparse.ArgumentParser(
             prog="Nparallel",
             description="Speed up Nmap scans by running them in parallel",
-            usage="\n Run Nmap scan:\n" \
-                  " > nparallel nmap [nmap-args] -iL FILE \n"\
-                  " > nparallel nmap -v --top-ports 100 -oX results.xml -iL targets.txt "
+#            usage="\n Run Nmap scan:\n" \
+#                  " > nparallel nmap [nmap-args] -iL FILE \n"\
+#                  " > nparallel nmap -v --top-ports 100 -oX results.xml -iL targets.txt "
         )
 
         sub_parsers = parser.add_subparsers(help='command', dest="command")        
 
         parser_run = sub_parsers.add_parser('nmap', 
-            help='Run Nmap scan',                                            
+            help='Run scan',                                            
             usage="\n" \
                 " > nparallel nmap [args below / arbitrary nmap args] -iL targets.txt\n" \
                 " > nparallel nmap -v --top-ports 100 -oX results.xml -iL targets.txt")
         
         parser_run.add_argument('-iL', '--input-list', required=True, help='Input from list of hosts/networks')
         parser_run.add_argument('--force-scan', action='store_true', help='Scan hosts even if cache entry exists. Updates cache.')
-        parser_run.add_argument('-t', '--threads', type=int, default=1000, help="Number of parallel nmap threads")
+        parser_run.add_argument('-t', '--threads', type=int, default=100, help="Number of parallel nmap threads")
         parser_run.add_argument('-oA', '--out-all', default=None, help='Output in the three major formats at once (normal, XML and grepable)')
         parser_run.add_argument('-oN', '--out-normal', default=None, help='Output scan in Normal format')
         parser_run.add_argument('-oG', '--out-grepable', default=None, help='Output scan in Grepable format')
         parser_run.add_argument('-oX', '--out-xml', default=None, help='Output scan in XML')
         parser_run.add_argument('-oL', '--out-log', default=None, help='Output scan in Log format')
+
+        parser_cache = sub_parsers.add_parser('cache', help='Show cache')
+        parser_cache.add_argument('-v', '--verbose', action='store_true', help='Show finished IP addresses')
+
+        parser_clear = sub_parsers.add_parser('clear', help='Clear cache')
+        clear_group = parser_clear.add_mutually_exclusive_group(required=True)
+        clear_group.add_argument('-ci', '--cmd-id', help="Nmap command id. Use 'cache' command to list them")
+        clear_group.add_argument('-a', '--all', action='store_true', help="Clear entire cache")
                
         args, unknown = parser.parse_known_args()
         args.nmap_command = f"nmap {' '.join(unknown)}"
@@ -138,28 +151,48 @@ class Nparallel:
                             print(f"QUITTING!")
                             exit (1)
         return sorted(resolved_ips)
+    
+    def get_scaninfo_path (self, cmd_id:str):
+        return os.path.join (self.CACHE_DIR, cmd_id, f"{self.COMMAND_FILE_PREFIX}{cmd_id}")
+    
+    def get_scan_cache_path (self, cmd_id:str):
+        return os.path.join (self.CACHE_DIR, cmd_id)
 
+    def get_nmap_base_cmd(self, cmd_id:str):  
+        "reads nmap base command from scaninfo file. Returns None if scan_id does not exist"  
+        nmap_base_cmd = None
+        scaninfo_path = self.get_scaninfo_path(cmd_id)
+        if os.path.exists(scaninfo_path):         
+            with open(scaninfo_path, 'r') as scaninfo_file:
+                nmap_base_cmd = scaninfo_file.readline()
+        return nmap_base_cmd
 
-    def get_scans(self, cache_dir, nmap_cmd, resolved_ips, force_scan):
-        "Get lists of finished and unfinished scans"
+    def get_scans(self, cmd_id, resolved_ips, force_scan):
+        "Get lists of finished and unfinished scans based on resolved_ips"
         scans = []
         scans_open = []
         scans_finished = []
+
         # use scans from cache, if force_scan is false
         if force_scan == False:
-            scans_finished = [f for f in os.listdir(cache_dir) if f.endswith(".xml")]
+            scans_finished = [f for f in os.listdir(self.get_scan_cache_path(cmd_id)) if f.endswith(".xml")]
         for ip in resolved_ips:
             nmap_scan = NmapScan(
                 ip = ip,
-                nmap_cmd = nmap_cmd
+                nmap_cmd = NmapCommand(self.get_nmap_base_cmd(cmd_id))
             )    
             if f"{nmap_scan.get_id()}.xml" not in scans_finished:
                 scans_open.append(nmap_scan)
             scans.append(nmap_scan)
         return scans, scans_open
-            
     
-    def init_cache_dir(self):
+    def get_finished_scans (self, cmd_id):
+        scan_cache_path = self.get_scan_cache_path(cmd_id)
+        scans_finished = [f for f in os.listdir(scan_cache_path) if f.endswith(".xml")]
+        return scans_finished
+      
+    
+    def init_scan_cache(self):
         "Init cache directory for specific command"
         nmap_cmd = NmapCommand(self.args.nmap_command)
         cache_dir = os.path.join(os.getcwd(), self.CACHE_DIR, nmap_cmd.get_id())
@@ -359,6 +392,60 @@ class Nparallel:
 
         return out_str
 
+    def get_cache_info(self):
+        base_cache_dir = os.path.join(os.getcwd(), self.CACHE_DIR)
+        scans = {}      
+        for cmd_id in os.listdir(base_cache_dir):
+            scaninfo_path = self.get_scaninfo_path(cmd_id)
+                         
+            ip_adresses = list()
+            for scan in self.get_finished_scans(cmd_id):
+                ip = ipaddress.IPv4Address(scan.split("_")[0])
+                ip_adresses.append(ip)
+
+            if os.path.exists(scaninfo_path):         
+                with open(scaninfo_path, 'r') as scaninfo_file:
+                    scans[cmd_id] = {
+                        "cmd_id": cmd_id,
+                        "nmap_base_cmd": self.get_nmap_base_cmd(cmd_id),
+                        "scans_finished": self.get_finished_scans(cmd_id),
+                        "scan_groups": self.group_ip_addresses(ip_adresses)
+                    }
+        return scans
+    
+
+    def group_ip_addresses(self, ip_addresses):
+        groups = []
+        for _, g in itertools.groupby(enumerate(sorted(ip_addresses)), lambda ix: ix[0] - int(ix[1])):
+            group = list(map(operator.itemgetter(1), g))
+            if len(group) > 1:
+                groups.append(f"{group[0]}-{str(group[-1]).split('.')[-1]}")
+            else:
+                groups.append(str(group[0]))
+        return groups
+
+    def print_cache_info(self, scans, verbose):
+        if len (scans) > 0: 
+            print (f"[*] Cache contains {len(scans)} scans:")  
+            if verbose == False:  
+                print (f"Cmd_id     Finished\tNmap command")
+                print (f"---        ---     \t---")
+                for entry in scans.values():
+                        print (f"{entry['cmd_id']}   {len(entry['scans_finished'])}    \t{entry['nmap_base_cmd']}")
+            else:
+                print (f"Cmd_id     Finished      \tNmap command")
+                print (f"---        ---           \t---")
+                for entry in scans.values():       
+                    is_first_line = True
+                    for group in entry['scan_groups']: 
+                        if is_first_line:
+                            print (f"{entry['cmd_id']}   {group}    \t{entry['nmap_base_cmd']}")
+                            is_first_line = False
+                        else:
+                            print (f"           {group}  ")  
+        else:
+            print ("[*] Cache is empty.")
+
 # lock object to work thread-safe with print function
 s_print_lock = Lock()
 
@@ -374,79 +461,99 @@ def main(cli_args=None):
 
     # Parse args
     args = nparallel.args  
-    nmap_cmd = NmapCommand(args.nmap_command)
     
-    # resolve IPs
-    resolved_ips = nparallel.resolve_to_ip_addresses(args.input_list)  
-    cache_dir = nparallel.init_cache_dir()  
-    
-    # check for (un)finished scans        
-    scans, scans_open = nparallel.get_scans (cache_dir, nmap_cmd, resolved_ips, args.force_scan)
 
-    start_time = datetime.now()
-    scans_finished = len(scans) - len(scans_open)
+    if args.command == "nmap":
+        nmap_cmd = NmapCommand(args.nmap_command)
 
-    print (f"[*] Cmd: {nmap_cmd.cmd_str} // Threads: {args.threads} // Cache: {cache_dir}")
-    print (f"[*] Progress: \033[1m\033[92m{scans_finished}/{len(scans)} hosts\033[0m (Start: {start_time.strftime(f'%H:%M:%S')})")
-
-    # TODO work in memory instead of tmp
-    with tempfile.TemporaryDirectory() as tmp_dir :
-        with concurrent.futures.ThreadPoolExecutor(max_workers=args.threads) as executor:
-            try:
-                # init nmap scan
-                for scan in executor.map(nparallel.run_nmap, scans_open, repeat(tmp_dir)):
-                    try:
-                        if (scan.result.returncode == 0):
-                            # update progress
-                            scans_finished += 1
-                            s_print (f'\033[A                             \033[A')
-                            s_print (f'[*] Progress: \033[1m\033[92m{scans_finished}/{len(scans)} hosts\033[0m (Start: {start_time.strftime(f"%H:%M:%S")})')  
-
-                            scan_id = scan.get_id()
-                            in_base_path = os.path.join(tmp_dir, scan_id)
-                            out_base_path = os.path.join(cache_dir, scan_id)
-
-                             # copy files
-                            for file_ext in [".xml", ".txt", ".grep", ".log"]:
-                                shutil.copyfile(in_base_path + file_ext, out_base_path + file_ext)
-
-                        else:                            
-                            s_print(f"[!] Scan of {scan.ip} failed: Error (Result code: {scan.result.returncode})")                            
-                    except Exception as exc:
-                        s_print(f'[!] Catch inside: {exc}')
-
-            except Exception as exc:
-                s_print(f'[!] Catch outside: {exc}')
-                # TODO finish processes when catched, because otherwise there will be zombie processes
+        # resolve IPs
+        resolved_ips = nparallel.resolve_to_ip_addresses(args.input_list)  
+        cache_dir = nparallel.init_scan_cache()  
         
+        # check for (un)finished scans        
+        scans, scans_open = nparallel.get_scans (nmap_cmd.get_id(), resolved_ips, args.force_scan)
 
-    end_time = datetime.now()
-    s_print (f"[+] \033[1m\033[92mFinished\033[0m in {'{:.2f}'.format((end_time - start_time).total_seconds())} sec (End: {end_time.strftime(f'%H:%M:%S')})\n")
-    #s_print (f"Duration..: {end_time - start_time} seconds")
+        start_time = datetime.now()
+        scans_finished = len(scans) - len(scans_open)
 
-    # TODO output even if scan is aborted?
+        print (f"[*] Cmd_id: {nmap_cmd.get_id()}  |  Cmd: {nmap_cmd.cmd_str}  |  Threads: {args.threads}")
+        print (f"[*] Progress: \033[1m\033[92m{scans_finished}/{len(scans)} hosts\033[0m (Start: {start_time.strftime(f'%H:%M:%S')})")
 
-    if args.out_all:
-        args.out_xml = args.out_all + ".xml"
-        args.out_normal = args.out_all + ".txt"
-        args.out_grepable = args.out_all + ".grep"
+        # TODO work in memory instead of tmp
+        with tempfile.TemporaryDirectory() as tmp_dir :
+            with concurrent.futures.ThreadPoolExecutor(max_workers=args.threads) as executor:
+                try:
+                    # init nmap scan
+                    for scan in executor.map(nparallel.run_nmap, scans_open, repeat(tmp_dir)):
+                        try:
+                            if (scan.result.returncode == 0):
+                                # update progress
+                                scans_finished += 1
+                                s_print (f'\033[A                             \033[A')
+                                s_print (f'[*] Progress: \033[1m\033[92m{scans_finished}/{len(scans)} hosts\033[0m (Start: {start_time.strftime(f"%H:%M:%S")})')  
+
+                                scan_id = scan.get_id()
+                                in_base_path = os.path.join(tmp_dir, scan_id)
+                                out_base_path = os.path.join(cache_dir, scan_id)
+
+                                # copy files
+                                for file_ext in [".xml", ".txt", ".grep", ".log"]:
+                                    shutil.copyfile(in_base_path + file_ext, out_base_path + file_ext)
+
+                            else:                            
+                                s_print(f"[!] Scan of {scan.ip} failed: Error (Result code: {scan.result.returncode})")                            
+                        except Exception as exc:
+                            s_print(f'[!] Catch inside: {exc}')
+
+                except Exception as exc:
+                    s_print(f'[!] Catch outside: {exc}')
+                    # TODO finish processes when catched, because otherwise there will be zombie processes
+            
+
+        end_time = datetime.now()
+        s_print (f"[+] \033[1m\033[92mFinished\033[0m in {'{:.2f}'.format((end_time - start_time).total_seconds())} sec (End: {end_time.strftime(f'%H:%M:%S')})\n")
+        #s_print (f"Duration..: {end_time - start_time} seconds")
+
+        # TODO output even if scan is aborted?
+
+        if args.out_all:
+            args.out_xml = args.out_all + ".xml"
+            args.out_normal = args.out_all + ".txt"
+            args.out_grepable = args.out_all + ".grep"
+        
+        if args.out_xml:
+            nparallel.merge_files (cache_dir, nmap_cmd, start_time, end_time, ".xml", args.out_xml)
+            s_print (f"[+] XML file saved at '\033[1m{os.path.join(os.getcwd(), args.out_xml)}\033[0m'")
+        if args.out_normal:
+            nparallel.merge_files (cache_dir, nmap_cmd, start_time, end_time, ".txt", args.out_normal)
+            s_print (f"[+] Normal file saved at '\033[1m{os.path.join(os.getcwd(), args.out_normal)}\033[0m'")
+        if args.out_grepable:
+            nparallel.merge_files (cache_dir, nmap_cmd, start_time, end_time, ".grep", args.out_grepable)
+            s_print (f"[+] Grepable file saved at '\033[1m{os.path.join(os.getcwd(), args.out_grepable)}\033[0m'")
+        if args.out_log:
+            nparallel.merge_files (cache_dir, nmap_cmd, start_time, end_time, ".log", args.out_log)
+            s_print (f"[+] Log file saved at '\033[1m{os.path.join(os.getcwd(), args.out_log)}\033[0m'")
+        
+        if args.out_all == False and args.out_xml == False and args.out_normal == False and args.out_grepable == False and args.out_log == False:
+            s_print (f"No output file location provided. Run same command again with -oX/-oG/-oN/-oL/-oA option.")
     
-    if args.out_xml:
-        nparallel.merge_files (cache_dir, nmap_cmd, start_time, end_time, ".xml", args.out_xml)
-        s_print (f"[+] XML file saved at '\033[1m{os.path.join(os.getcwd(), args.out_xml)}\033[0m'")
-    if args.out_normal:
-         nparallel.merge_files (cache_dir, nmap_cmd, start_time, end_time, ".txt", args.out_normal)
-         s_print (f"[+] Normal file saved at '\033[1m{os.path.join(os.getcwd(), args.out_normal)}\033[0m'")
-    if args.out_grepable:
-         nparallel.merge_files (cache_dir, nmap_cmd, start_time, end_time, ".grep", args.out_grepable)
-         s_print (f"[+] Grepable file saved at '\033[1m{os.path.join(os.getcwd(), args.out_grepable)}\033[0m'")
-    if args.out_log:
-         nparallel.merge_files (cache_dir, nmap_cmd, start_time, end_time, ".log", args.out_log)
-         s_print (f"[+] Log file saved at '\033[1m{os.path.join(os.getcwd(), args.out_log)}\033[0m'")
-    
-    if args.out_all == False and args.out_xml == False and args.out_normal == False and args.out_grepable == False and args.out_log == False:
-        s_print (f"No output file location provided. Run same command again with -oX/-oG/-oN/-oL/-oA option.")
-    
+    elif args.command == "cache":
+        scans = nparallel.get_cache_info()
+        nparallel.print_cache_info(scans, args.verbose)
+
+    elif args.command == "clear":
+        if args.all:
+            shutil.rmtree(nparallel.CACHE_DIR)
+            s_print ("[+] Cache cleared.")
+        elif args.cmd_id:
+            cmd_id = args.cmd_id
+            scan_cache = nparallel.get_scan_cache_path(cmd_id)
+            if os.path.exists(scan_cache):
+                shutil.rmtree(scan_cache)
+                s_print (f"[+] Cache for command id '{cmd_id}' cleared.")
+            else:
+                s_print (f"[!] Cache for command id '{cmd_id}' not found.")
+
     
 if __name__ == '__main__':
     main()

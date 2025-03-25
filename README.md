@@ -37,7 +37,7 @@ $ nparallel nmap -v --top-ports 100 -oX results.xml -iL targets.txt
 The following things happen under the hood when running ```nparallel nmap -v --top-ports 100 -oX results.xml -iL targets.txt```:
 
 1. Resolve all entries of ```targets.txt``` into single hosts. IP addresses, URLs and CIDR notation (e.g. 172.1.2.0/24) are supported. 
-2. Check which hosts haven't been scanned by the provided nmap argument set yet, by checking the ```.cache/<nmap_cmd_id>``` directory. Each nmap argument set has a different id ("nmap_cmd_id"). The argument order doesn't matter. If the argument set changes, nparallel runs a new scan.
+2. Check which hosts haven't been scanned by the provided nmap argument set yet, by checking the ```.cache/<cmd_id>``` directory. Each nmap argument set has a different id ("cmd_id"). The argument order doesn't matter. If the argument set changes, nparallel runs a new scan.
    Changing only the arguments listed ```nparallel nmap -h``` but keep the other nmap arguments untouched, does not lead to a new scan.
 3. Start parallel nmap scans of all unfinished scans. Each scan/thread scans exactly one host.
 4. Wait until all scans have finished.

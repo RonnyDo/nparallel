@@ -109,18 +109,18 @@ class Nparallel:
         parser_run.add_argument('-oX', '--out-xml', default=None, help='Output scan in XML')
         parser_run.add_argument('-oL', '--out-log', default=None, help='Output scan in Log format')
 
-        parser_cache = sub_parsers.add_parser('cache', help='Show cache')
-        parser_cache.add_argument('-v', '--verbose', action='store_true', help='Show finished IP addresses')
+        parser_cache = sub_parsers.add_parser('cache', help='Cache operations')
 
-        parser_clear = sub_parsers.add_parser('clear', help='Clear cache')
-        clear_group = parser_clear.add_mutually_exclusive_group(required=True)
-        clear_group.add_argument('-ci', '--cmd-id', help="Nmap command id. Use 'cache' command to list them")
-        clear_group.add_argument('-a', '--all', action='store_true', help="Clear entire cache")
-               
-        args, unknown = parser.parse_known_args()
-        args.nmap_command = f"nmap {' '.join(unknown)}"
+        cache_sub_parsers = parser_cache.add_subparsers(title='subcommands', dest="cache_command")
+
+        parser_cache_list = cache_sub_parsers.add_parser('ls', help='List cache entries')
+        parser_cache_list.add_argument('-v', '--verbose', action='store_true', help='Show full IP ranges')
+        parser_cache_remove = cache_sub_parsers.add_parser('rm', help='Remove one or more cache entries')
+        parser_cache_remove.add_argument('cmd_id', nargs='+', help='Nmap command ID(s) of the entries to be deleted')
+        parser_cache_list = cache_sub_parsers.add_parser('clear', help='Clear entire cache')                   
         
-        # TODO implement other commands
+        args, unknown = parser.parse_known_args()
+        args.nmap_command = f"nmap {' '.join(unknown)}"        
 
         return args       
     
@@ -393,24 +393,25 @@ class Nparallel:
         return out_str
 
     def get_cache_info(self):
+        scans = {} 
         base_cache_dir = os.path.join(os.getcwd(), self.CACHE_DIR)
-        scans = {}      
-        for cmd_id in os.listdir(base_cache_dir):
-            scaninfo_path = self.get_scaninfo_path(cmd_id)
-                         
-            ip_adresses = list()
-            for scan in self.get_finished_scans(cmd_id):
-                ip = ipaddress.IPv4Address(scan.split("_")[0])
-                ip_adresses.append(ip)
+        if (os.path.exists(base_cache_dir)):
+            for cmd_id in os.listdir(base_cache_dir):
+                scaninfo_path = self.get_scaninfo_path(cmd_id)
+                            
+                ip_adresses = list()
+                for scan in self.get_finished_scans(cmd_id):
+                    ip = ipaddress.IPv4Address(scan.split("_")[0])
+                    ip_adresses.append(ip)
 
-            if os.path.exists(scaninfo_path):         
-                with open(scaninfo_path, 'r') as scaninfo_file:
-                    scans[cmd_id] = {
-                        "cmd_id": cmd_id,
-                        "nmap_base_cmd": self.get_nmap_base_cmd(cmd_id),
-                        "scans_finished": self.get_finished_scans(cmd_id),
-                        "scan_groups": self.group_ip_addresses(ip_adresses)
-                    }
+                if os.path.exists(scaninfo_path):         
+                    with open(scaninfo_path, 'r') as scaninfo_file:
+                        scans[cmd_id] = {
+                            "cmd_id": cmd_id,
+                            "nmap_base_cmd": self.get_nmap_base_cmd(cmd_id),
+                            "scans_finished": self.get_finished_scans(cmd_id),
+                            "scan_groups": self.group_ip_addresses(ip_adresses)
+                        }
         return scans
     
 
@@ -426,14 +427,14 @@ class Nparallel:
 
     def print_cache_info(self, scans, verbose):
         if len (scans) > 0: 
-            print (f"[*] Cache contains {len(scans)} scans:")  
+            print (f"[*] Cache contains {len(scans)} scans:\n")  
             if verbose == False:  
-                print (f"Cmd_id     Finished\tNmap command")
+                print (f"cmd_id     finished\tNmap command")
                 print (f"---        ---     \t---")
                 for entry in scans.values():
                         print (f"{entry['cmd_id']}   {len(entry['scans_finished'])}    \t{entry['nmap_base_cmd']}")
             else:
-                print (f"Cmd_id     Finished      \tNmap command")
+                print (f"cmd_id     finished      \tNmap command")
                 print (f"---        ---           \t---")
                 for entry in scans.values():       
                     is_first_line = True
@@ -444,7 +445,7 @@ class Nparallel:
                         else:
                             print (f"           {group}  ")  
         else:
-            print ("[*] Cache is empty.")
+            print ("[*] Cache is empty")
 
 # lock object to work thread-safe with print function
 s_print_lock = Lock()
@@ -509,11 +510,11 @@ def main(cli_args=None):
                     s_print(f'[!] Catch outside: {exc}')
                     # TODO finish processes when catched, because otherwise there will be zombie processes
             
+        # TODO + #FIXME After successful scan the terminal often doesn't show a cursor anymore
 
         end_time = datetime.now()
         s_print (f"[+] \033[1m\033[92mFinished\033[0m in {'{:.2f}'.format((end_time - start_time).total_seconds())} sec (End: {end_time.strftime(f'%H:%M:%S')})\n")
-        #s_print (f"Duration..: {end_time - start_time} seconds")
-
+        
         # TODO output even if scan is aborted?
 
         if args.out_all:
@@ -535,24 +536,29 @@ def main(cli_args=None):
             s_print (f"[+] Log file saved at '\033[1m{os.path.join(os.getcwd(), args.out_log)}\033[0m'")
         
         if args.out_all == False and args.out_xml == False and args.out_normal == False and args.out_grepable == False and args.out_log == False:
-            s_print (f"No output file location provided. Run same command again with -oX/-oG/-oN/-oL/-oA option.")
+            s_print (f"No output file location provided - run same command again with -oX/-oG/-oN/-oL/-oA option")
     
     elif args.command == "cache":
-        scans = nparallel.get_cache_info()
-        nparallel.print_cache_info(scans, args.verbose)
-
-    elif args.command == "clear":
-        if args.all:
+        # list cache entries
+        if args.cache_command == "ls":
+            scans = nparallel.get_cache_info()
+            nparallel.print_cache_info(scans, args.verbose)
+        # delete single entries
+        elif args.cache_command == "rm":
+            for cmd_id in args.cmd_id:
+                scan_cache = nparallel.get_scan_cache_path(cmd_id)
+                if os.path.exists(scan_cache):
+                    shutil.rmtree(scan_cache)
+                    print (f"[+] Entry with cmd_id '{cmd_id}' removed")
+                else:
+                    print (f"[!] Entry for cmd_id '{cmd_id}' not found") 
+        # clear cache
+        elif args.cache_command == "clear":
             shutil.rmtree(nparallel.CACHE_DIR)
-            s_print ("[+] Cache cleared.")
-        elif args.cmd_id:
-            cmd_id = args.cmd_id
-            scan_cache = nparallel.get_scan_cache_path(cmd_id)
-            if os.path.exists(scan_cache):
-                shutil.rmtree(scan_cache)
-                s_print (f"[+] Cache for command id '{cmd_id}' cleared.")
-            else:
-                s_print (f"[!] Cache for command id '{cmd_id}' not found.")
+            print ("[+] Cache cleared.")
+
+        # leave some space at the end
+        print ()
 
     
 if __name__ == '__main__':

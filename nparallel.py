@@ -100,6 +100,7 @@ class Nparallel:
                 " > nparallel nmap [args below / arbitrary nmap args] -iL targets.txt\n" \
                 " > nparallel nmap -v --top-ports 100 -oX results.xml -iL targets.txt")
         
+        # nparallel nmap ...
         parser_run.add_argument('-iL', '--input-list', required=True, help='Input from list of hosts/networks')
         parser_run.add_argument('--force-scan', action='store_true', help='Scan hosts even if cache entry exists. Updates cache.')
         parser_run.add_argument('-t', '--threads', type=int, default=100, help="Number of parallel nmap threads")
@@ -108,17 +109,19 @@ class Nparallel:
         parser_run.add_argument('-oG', '--out-grepable', default=None, help='Output scan in Grepable format')
         parser_run.add_argument('-oX', '--out-xml', default=None, help='Output scan in XML')
         parser_run.add_argument('-oL', '--out-log', default=None, help='Output scan in Log format')
+        # TODO: implement -oC for csv export
 
-        parser_cache = sub_parsers.add_parser('cache', help='Cache operations')
-
-        cache_sub_parsers = parser_cache.add_subparsers(title='subcommands', dest="cache_command")
-
-        parser_cache_list = cache_sub_parsers.add_parser('ls', help='List cache entries')
-        parser_cache_list.add_argument('-v', '--verbose', action='store_true', help='Show full IP ranges')
-        parser_cache_remove = cache_sub_parsers.add_parser('rm', help='Remove one or more cache entries')
-        parser_cache_remove.add_argument('cmd_id', nargs='+', help='Nmap command ID(s) of the entries to be deleted')
-        parser_cache_list = cache_sub_parsers.add_parser('clear', help='Clear entire cache')                   
+        # ls
+        parser_ls = sub_parsers.add_parser('ls', help='Show cache')    
+        parser_ls.add_argument('cmd_id', nargs='?', help='Show verbose info of provide command ID')
+        parser_ls.add_argument('-g', '--grouped', action='store_true', help='Group IP-addresses and ports for better readability')
         
+        # rm
+        parser_rm = sub_parsers.add_parser('rm', help='Remove from cache')
+        parser_rm.add_argument('cmd_id', nargs='?', help='Nmap command ID(s) of the entries to be deleted')
+        
+
+        # interpret remaining arguments as nmap args
         args, unknown = parser.parse_known_args()
         args.nmap_command = f"nmap {' '.join(unknown)}"        
 
@@ -187,6 +190,7 @@ class Nparallel:
         return scans, scans_open
     
     def get_finished_scans (self, cmd_id):
+        "Return XML file paths where scan is finished"
         scan_cache_path = self.get_scan_cache_path(cmd_id)
         scans_finished = [f for f in os.listdir(scan_cache_path) if f.endswith(".xml")]
         return scans_finished
@@ -414,6 +418,46 @@ class Nparallel:
                         }
         return scans
     
+    
+    def get_open_ports (self, cmd_id, scanfile_xml_name):
+        scan_cache = self.get_scan_cache_path(cmd_id)
+        "Get list of open TCP and udp ports from nmap XML file"
+        ports_tcp = set()
+        ports_udp = set()
+        with open(os.path.join(scan_cache, scanfile_xml_name), 'r') as xml_file:
+            xml = ET.parse(xml_file)
+            # should actually be just one host per file
+            for host in xml.findall('host'):
+                for port in host.findall('ports/port'):
+                    # ensure port state is up
+                    state = port.find("state")
+                    if state.get("state") == "open":
+                        # add tcp
+                        if port.get("protocol") == "tcp":
+                            ports_tcp.add(port.get("portid"))
+                        # add udp
+                        else:
+                            ports_udp.add(port.get("portid"))
+        return ports_tcp, ports_udp
+
+        
+
+
+    def remove_cache_entries(self, cmd_ids=[]):
+        "Remove single or all cache entires"
+        if cmd_ids and len(cmd_ids > 0):
+            for cmd_id in args.cmd_id:
+                scan_cache = nparallel.get_scan_cache_path(cmd_id)
+                if os.path.exists(scan_cache):
+                    shutil.rmtree(scan_cache)
+                    print (f"[+] Entry with cmd_id '{cmd_id}' removed")
+                else:
+                    print (f"[!] Entry for cmd_id '{cmd_id}' not found")    
+        else:
+            if input("[?] Delete entire cache? [y/N]") == "y":
+                shutil.rmtree(self.CACHE_DIR)
+                print ("[+] Cache cleared.")
+
 
     def group_ip_addresses(self, ip_addresses):
         groups = []
@@ -425,27 +469,97 @@ class Nparallel:
                 groups.append(str(group[0]))
         return groups
 
-    def print_cache_info(self, scans, verbose):
+    def group_ports(self, ports):
+        groups = []
+        for _, g in itertools.groupby(enumerate(sorted(ports, key=int)), lambda ix: ix[0] - int(ix[1])):
+            group = list(map(operator.itemgetter(1), g))
+            if len(group) > 1:
+                groups.append(f"{group[0]}-{str(group[-1]).split('.')[-1]}")
+            else:
+                groups.append(str(group[0]))
+        return groups
+    
+
+
+    def print_cache_info(self, scans):
         if len (scans) > 0: 
             print (f"[*] Cache contains {len(scans)} scans:\n")  
-            if verbose == False:  
-                print (f"cmd_id     finished\tNmap command")
-                print (f"---        ---     \t---")
-                for entry in scans.values():
-                        print (f"{entry['cmd_id']}   {len(entry['scans_finished'])}    \t{entry['nmap_base_cmd']}")
-            else:
-                print (f"cmd_id     finished      \tNmap command")
-                print (f"---        ---           \t---")
-                for entry in scans.values():       
-                    is_first_line = True
-                    for group in entry['scan_groups']: 
-                        if is_first_line:
-                            print (f"{entry['cmd_id']}   {group}    \t{entry['nmap_base_cmd']}")
-                            is_first_line = False
-                        else:
-                            print (f"           {group}  ")  
+            print (f"Cmd id     Finished\tNmap base command")
+            print (f"---        ---     \t---")
+            for entry in scans.values():
+                    print (f"{entry['cmd_id']}   {len(entry['scans_finished'])}    \t{entry['nmap_base_cmd']}")
         else:
             print ("[*] Cache is empty")
+            
+
+
+
+    def get_cmd_info (self, cmd_id):
+        scaninfo_path = self.get_scaninfo_path(cmd_id)
+
+        cmd_info = None
+
+        if (os.path.exists(scaninfo_path)):
+
+            hosts_finished = list()
+            hosts_with_open_ports = list()
+            ports_tcp_open = set()
+            ports_udp_open = set()
+            
+            for scanfile_xml_name in self.get_finished_scans(cmd_id):
+                ip = ipaddress.IPv4Address(scanfile_xml_name.split("_")[0])            
+                hosts_finished.append(ip)
+                ports_tcp, ports_udp = self.get_open_ports (cmd_id, scanfile_xml_name)
+                if len(ports_tcp) > 0 or len(ports_udp) > 0:
+                    hosts_with_open_ports.append(ip)
+                    ports_tcp_open.update(ports_tcp)
+                    ports_udp_open.update(ports_udp)
+
+            cmd_info = {
+                "cmd_id": cmd_id,
+                "nmap_base_cmd": self.get_nmap_base_cmd(cmd_id),
+                "hosts_finished": sorted(hosts_finished),
+                "hosts_with_open_ports": sorted(hosts_with_open_ports),
+                "ports_tcp_open": sorted(ports_tcp_open, key=int),
+                "ports_udp_open": sorted(ports_udp_open, key=int),
+            }
+        else:
+            print (f"[!] Unkown cmd id '{cmd_id}'")
+
+        return cmd_info
+
+
+    def print_cmd_info(self, cmd_info, grouped):
+        if cmd_info: 
+            print (f"[*] Nmap base command:\n{cmd_info['nmap_base_cmd']}")
+
+            print (f"\n[+] Hosts finished (\033[92m{len(cmd_info['hosts_finished'])}\033[0m):")
+            if grouped:
+                print (f"{' '.join(self.group_ip_addresses(cmd_info['hosts_finished']))}")
+            else:
+                print (f"{' '.join([str(x) for x in cmd_info['hosts_finished']])}")
+            
+
+            print (f"\n[+] Hosts with open ports (\033[92m{len(cmd_info['hosts_with_open_ports'])}\033[0m):")            
+            if grouped:
+                print (f"{' '.join(self.group_ip_addresses(cmd_info['hosts_with_open_ports']))}")
+            else:
+                print (f"{' '.join([str(x) for x in cmd_info['hosts_with_open_ports']])}")
+            
+            print (f"\n[+] Ports open TCP (\033[92m{len(cmd_info['ports_tcp_open'])}\033[0m):") 
+            if grouped:                                       
+                print (f"{','.join(self.group_ports(cmd_info['ports_tcp_open']))}")
+            else:         
+                print (f"{','.join([str(x) for x in cmd_info['ports_tcp_open']])}")        
+
+            print (f"\n[+] Ports open UDP (\033[92m{len(cmd_info['ports_udp_open'])}\033[0m):") 
+            if grouped:                                       
+                print (f"{','.join(self.group_ports(cmd_info['ports_udp_open']))}")
+            else:         
+                print (f"{','.join([str(x) for x in cmd_info['ports_udp_open']])}")             
+            
+
+
 
 # lock object to work thread-safe with print function
 s_print_lock = Lock()
@@ -538,27 +652,22 @@ def main(cli_args=None):
         if args.out_all == False and args.out_xml == False and args.out_normal == False and args.out_grepable == False and args.out_log == False:
             s_print (f"No output file location provided - run same command again with -oX/-oG/-oN/-oL/-oA option")
     
-    elif args.command == "cache":
-        # list cache entries
-        if args.cache_command == "ls":
+    elif args.command == "ls":
+        if args.cmd_id:
+            cmd_info = nparallel.get_cmd_info(args.cmd_id)
+            nparallel.print_cmd_info(cmd_info, args.grouped)
+        else:
             scans = nparallel.get_cache_info()
-            nparallel.print_cache_info(scans, args.verbose)
-        # delete single entries
-        elif args.cache_command == "rm":
-            for cmd_id in args.cmd_id:
-                scan_cache = nparallel.get_scan_cache_path(cmd_id)
-                if os.path.exists(scan_cache):
-                    shutil.rmtree(scan_cache)
-                    print (f"[+] Entry with cmd_id '{cmd_id}' removed")
-                else:
-                    print (f"[!] Entry for cmd_id '{cmd_id}' not found") 
-        # clear cache
-        elif args.cache_command == "clear":
-            shutil.rmtree(nparallel.CACHE_DIR)
-            print ("[+] Cache cleared.")
+            nparallel.print_cache_info(scans)
 
-        # leave some space at the end
-        print ()
+    elif args.command == "rm":
+        if args.cmd_id:
+            nparallel.remove_cache_entries(cmd_id)
+        else:
+            nparallel.remove_cache_entries()
+
+    # leave some space at the end
+    print ()
 
     
 if __name__ == '__main__':

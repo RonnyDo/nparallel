@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="Nparallel",        	 
-    version="0.1.0",          
+    version="0.2.0",          
     author='Ronny Dobra',
     author_email='Ronny Dobra <6539575+RonnyDo@users.noreply.github.com>',
     description='Speed up Nmap scans by running them in parallel',
@@ -25,6 +25,13 @@ setuptools.setup(
     ],
     python_requires='>=3.6',
     entry_points = {            # this here is the magic that binds your function into a callable script
-        'console_scripts': ['nparallel=nparallel:main'],
+        'console_scripts': ['nparallel=nparallel.nparallel:main'],
+    },
+    # optional installation
+    extras_require = {
+        'with_office_export': [
+            'xlsxwriter',
+            'python-docx',
+        ]
     }
 )

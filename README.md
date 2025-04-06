@@ -33,9 +33,9 @@ wget https://raw.githubusercontent.com/RonnyDo/nparallel/refs/heads/main/nparall
 ### Run scan: ```nparallel nmap```
 ```
 # Usage: nparallel nmap [nmap-args] -iL TARGETS_FILE
-$ nparallel nmap -v --top-ports 100 -oX results.xml -iL targets.txt 
+$ nparallel nmap -v --top-ports 100 -oX results.xml -iL data/targets.txt 
 
-[*] Cmd id: cabb60dc  |  Nmap base cmd: nmap -v --top-ports 100 -oX results.xml  |  Threads: 100
+[*] Cmd id: cabb60dc | Nmap base cmd: nmap -v --top-ports 100 -oX results.xml | Threads: 100
 [*] Start: 21:49:03
 [+] Progress: 3/3 hosts
 [+] End: 21:49:06 (Finished in 3.11 seconds)

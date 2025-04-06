@@ -855,14 +855,13 @@ def main(cli_args=None):
 
         # run scans
         start_time = datetime.now()  
-        print (f"[*] Cmd id: \033[1m{nmap_cmd.get_id()}\033[0m  |  Nmap base cmd: \033[1m{nmap_cmd.cmd_str}\033[0m  |  Threads: \033[1m{args.threads}\033[0m")
+        print (f"[*] Cmd id: \033[1m{nmap_cmd.get_id()}\033[0m | Nmap base cmd: \033[1m{nmap_cmd.cmd_str}\033[0m | Threads: \033[1m{args.threads}\033[0m")
         print (f"[*] Start: {start_time.strftime(f'%H:%M:%S')}")      
         nparallel.execute(nmap_cmd, args.threads, cache_dir, scans, scans_open) 
         end_time = datetime.now()
         print (f"[*] End: {end_time.strftime(f'%H:%M:%S')} (\033[1m\033[92mFinished\033[0m in {'{:.2f}'.format((end_time - start_time).total_seconds())} seconds)")
         
         # generate out_files
-        # TODO output even if scan is aborted?
         export_builder = NmapExportBuilder()
 
         # set out_all
@@ -870,39 +869,41 @@ def main(cli_args=None):
             args.out_xml = args.out_all + ".xml"
             args.out_normal = args.out_all + ".txt"
             args.out_grepable = args.out_all + ".grep"
-
-        # export files
-        if args.out_xml:
-            export_builder.export(".xml", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_xml)
-            print (f"\n[+] XML file saved at '\033[1m{os.path.join(os.getcwd(), args.out_xml)}\033[0m'")
-        if args.out_normal:
-            export_builder.export(".txt", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_normal)
-            print (f"\n[+] Normal file saved at '\033[1m{os.path.join(os.getcwd(), args.out_normal)}\033[0m'")
-        if args.out_grepable:
-            export_builder.export(".grep", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_grepable)
-            print (f"\n[+] Grepable file saved at '\033[1m{os.path.join(os.getcwd(), args.out_grepable)}\033[0m'")   
-        if args.out_log:
-            export_builder.export(".log", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_log)
-            print (f"\n[+] Log file saved at '\033[1m{os.path.join(os.getcwd(), args.out_log)}\033[0m'")    
-        if args.out_csv:
-            export_builder.export(".csv", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_csv)
-            print (f"\n[+] CSV file saved at '\033[1m{os.path.join(os.getcwd(), args.out_csv)}\033[0m'")  
-        if args.out_excel:
-            export_builder.export(".xlsx", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_excel)
-            print (f"\n[+] XLSX file saved at '\033[1m{os.path.join(os.getcwd(), args.out_excel)}\033[0m'")
-        if args.out_word:
-            export_builder.export(".docx", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_word)
-            print (f"\n[+] DOCX file saved at '\033[1m{os.path.join(os.getcwd(), args.out_word)}\033[0m'")
-            
         
-        # print message if no export was provided
+        # print message if no export file was provided or export files
         if args.out_all == False and \
            args.out_xml == False and \
            args.out_normal == False and \
            args.out_grepable == False and \
-           args.out_csv == False and \
-           args.out_log == False:
-            s_print (f"\nNo output file location provided - run same command again with -oX/-oG/-oN/-oL/-oC/-oA option")
+           args.out_log == False and \
+           args.out_excel == False and \
+           args.args == False:
+            s_print (f"\nNo output file location provided - run same command again with -oX/-oN/-oG/-oL/-oC/-oE/-oW/-oA option")
+        else:
+            # leave a little space
+            print ()
+            if args.out_xml:
+                export_builder.export(".xml", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_xml)
+                print (f"[+] XML file saved at '\033[1m{os.path.join(os.getcwd(), args.out_xml)}\033[0m'")
+            if args.out_normal:
+                export_builder.export(".txt", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_normal)
+                print (f"[+] Normal file saved at '\033[1m{os.path.join(os.getcwd(), args.out_normal)}\033[0m'")
+            if args.out_grepable:
+                export_builder.export(".grep", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_grepable)
+                print (f"[+] Grepable file saved at '\033[1m{os.path.join(os.getcwd(), args.out_grepable)}\033[0m'")   
+            if args.out_log:
+                export_builder.export(".log", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_log)
+                print (f"[+] Log file saved at '\033[1m{os.path.join(os.getcwd(), args.out_log)}\033[0m'")    
+            if args.out_csv:
+                export_builder.export(".csv", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_csv)
+                print (f"[+] CSV file saved at '\033[1m{os.path.join(os.getcwd(), args.out_csv)}\033[0m'")  
+            if args.out_excel:
+                export_builder.export(".xlsx", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_excel)
+                print (f"[+] XLSX file saved at '\033[1m{os.path.join(os.getcwd(), args.out_excel)}\033[0m'")
+            if args.out_word:
+                export_builder.export(".docx", cache_dir, nmap_cmd, resolved_ips, start_time, end_time, args.out_word)
+                print (f"[+] DOCX file saved at '\033[1m{os.path.join(os.getcwd(), args.out_word)}\033[0m'")
+            
     
     # "ls" command
     elif args.command == "ls":

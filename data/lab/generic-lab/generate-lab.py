@@ -1,4 +1,4 @@
-import shutil,os, argparse
+import shutil, os, argparse
 
 
 parser = argparse.ArgumentParser()
@@ -7,9 +7,10 @@ parser.add_argument("--loss", type=int, default=1, help="Network package loss ra
 parser.add_argument("--bandwidth", type=str, default="100kbit", help="Network bandwith of each hosts in kbit, mbit or gbit")
 parser.add_argument("--num-subnets", type=int, default=1, help="Number of subnets. Default is 1, starting from 172.0.1.0/24")
 parser.add_argument("--num-subnet-hosts", type=int, default=10, help="Number of hosts per subnet. Default is 10, starting from 172.0.1.1-10")
+parser.add_argument("--dir", type=str, default="generic-lab", help="Output directory")
 args = parser.parse_args()
 
-
+OUT_PATH=os.path.join(os.getcwd(), args.dir)
 DOCKERFILE="dockerfile"
 HTDOCS_DIR="htdocs"
 COMPOSEFILE="compose.yml"
@@ -24,10 +25,15 @@ IP_PREFIX="172.0."
 NUM_SUBNET=args.num_subnets
 NUM_SERVER_IN_SUBNET=args.num_subnet_hosts
 
+# create lab folder
+print (f"Generate lab files to '{OUT_PATH}'")
+if os.path.exists(OUT_PATH):
+    shutil.rmtree(OUT_PATH)
+os.mkdir(OUT_PATH)
 
 # create file containing all lab-hosts
 print (f"Create {HOSTSFILE}")
-with open(HOSTSFILE, "w") as f:
+with open(os.path.join(OUT_PATH, HOSTSFILE), "w") as f:
     for subnet_index in range(1, NUM_SUBNET + 1):     
         for host_index in range(1,NUM_SERVER_IN_SUBNET + 1):            
             f.write(f"{IP_PREFIX}{subnet_index}.{host_index}\n")
@@ -35,29 +41,29 @@ with open(HOSTSFILE, "w") as f:
 
 # create file containing all class-C networks containing hosts
 print (f"Create {NETWORKSFILE}")
-with open(NETWORKSFILE, "w") as f:
+with open(os.path.join(OUT_PATH, NETWORKSFILE), "w") as f:
     for subnet_index in range(1, NUM_SUBNET + 1):            
         f.write(f"{IP_PREFIX}{subnet_index}.0/24\n")            
 
 
 # create dockerfile if scannable host
 print (f"Create {DOCKERFILE}")
-with open(DOCKERFILE, "w") as f:
+with open(os.path.join(OUT_PATH, DOCKERFILE), "w") as f:
     f.write("FROM php:8-apache\n")
     #f.write("FROM mattrayner/lamp:latest-1804")
     f.write("RUN apt-get update\n")
     f.write("RUN apt install iproute2 apache2 -y\n")
     f.write("RUN service apache2 start\n")
 
-if os.path.exists(HTDOCS_DIR):
-    shutil.rmtree(HTDOCS_DIR)
-os.mkdir(HTDOCS_DIR)
+# generate dummy webserver content
+HTDOCS_PATH=os.path.join(OUT_PATH, HTDOCS_DIR)
+os.mkdir(HTDOCS_PATH)
 # generate big file for download 
-with open(os.path.join(HTDOCS_DIR, "bigfile.zip"), "wb") as f:
+with open(os.path.join(HTDOCS_PATH, "bigfile.zip"), "wb") as f:
     # 50 MB
     f.truncate(50 * 1024 * 1024)
 # generate basic landing page
-with open(os.path.join(HTDOCS_DIR, "index.php"), "w") as f:    
+with open(os.path.join(HTDOCS_PATH, "index.php"), "w") as f:    
     f.write(f'<h1><u><?php echo gethostname(); ?></u> says hello!</h2>\n')
     f.write(f'<p><a href="/bigfile.zip">Click here</a> to download bigfile.zip.</p>\n')
     f.write(f'<p>It\'s a ZIP-file containing random bytes and can only be downloaded with limited speed.</p>\n')
@@ -65,7 +71,7 @@ with open(os.path.join(HTDOCS_DIR, "index.php"), "w") as f:
 
 # create docker-compose file
 print (f"Create {COMPOSEFILE}")
-with open(COMPOSEFILE, "w") as f:
+with open(os.path.join(OUT_PATH, COMPOSEFILE), "w") as f:
     f.write(f"version: '3.8'\n\n")
 
     f.write(f"networks:\n")
@@ -95,7 +101,7 @@ with open(COMPOSEFILE, "w") as f:
 
 # create traffic-control.sh
 print ("Create traffic-control.sh")
-with open(TCFILE, "w") as f:
+with open(os.path.join(OUT_PATH, TCFILE), "w") as f:
     f.write(f"#!/bin/sh\n")
     f.write(f"# Limit network bandwidth on all docker hosts\n\n")
 
@@ -106,9 +112,9 @@ with open(TCFILE, "w") as f:
     f.write(f'fi\n\n')
 
     f.write(f"TC_BANDWIDTH={TC_BANDWIDTH}\n")
-    f.write(f"TC_LATENCY={TC_LATENCY}\n")
+    f.write(f"TC_LATENCY={TC_LATENCY} # latency affects every request (not only the first)\n")
     f.write(f"TC_LOSS={TC_LOSS}\n")
-    f.write(f"TC_DELAY={TC_DELAY}\n\n")
+    f.write(f"TC_DELAY={TC_DELAY} # delay effects ping requests also\n\n")
 
     f.write(f'if [ "$1" = "add" ]; then\n')
     f.write(f'  echo "adding traffic control to all containers..."\n\n')

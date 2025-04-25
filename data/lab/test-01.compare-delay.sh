@@ -3,10 +3,10 @@
 # scans hosts with growing network delay
 
 # netowrk parameter
-DELAY=10
-LOSS=03
+DELAY=50
+LOSS=3
 BANDWIDTH=100mbit
-NUM_SUBNETS=3
+NUM_SUBNETS=4
 NUM_SUBNET_HOSTS=5
 
 # scan parameter
@@ -17,8 +17,8 @@ PARALLELISM=100 # either --min-hostgroup or --threads
 # generate result file
 echo "DELAY in ms\tnmap in secs\tnparallel in secs\n" > results.csv
 
-DELAY_INCREMENT=20
-for ((i_DELAY = 0 ; i_DELAY <= 100 ; i_DELAY=i_DELAY+DELAY_INCREMENT )) 
+DELAY_INCREMENT=50
+for ((i_DELAY = DELAY ; i_DELAY <= 500 ; i_DELAY=i_DELAY+DELAY_INCREMENT )) 
 do 
     # generate lab
     echo "Generate lab files with DELAY=$i_DELAY"
@@ -58,4 +58,6 @@ do
 
     echo "Cleanup docker environment"
     sudo docker-compose down --remove-orphans > /dev/null
+    sleep 10
+
 done

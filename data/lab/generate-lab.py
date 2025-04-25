@@ -6,8 +6,8 @@ parser.add_argument("--delay", type=int, default=1, help="Network delay in milli
 parser.add_argument("--loss", type=int, default=1, help="Network package loss rate in percent")
 parser.add_argument("--bandwidth", type=str, default="100kbit", help="Network bandwith of each hosts in kbit, mbit or gbit")
 parser.add_argument("--num-subnets", type=int, default=2, help="Number of subnets. Default is 2, starting from 10.0.1.0/24")
-parser.add_argument("--num-subnet-hosts", type=int, default=2, help="Number of hosts per subnet. Default is 2, starting from 10.0.1.101-102")
-parser.add_argument("--out-dir", type=str, default="generic-lab", help="Output directory")
+parser.add_argument("--num-subnet-hosts", type=int, default=2, help="Number of hosts per subnet. Default is 2, starting from 10.0.1.101")
+parser.add_argument("--out-dir", type=str, default="generic-lab", help="Output directory of generated files")
 args = parser.parse_args()
 
 OUT_PATH=os.path.join(os.getcwd(), args.out_dir)
@@ -153,14 +153,14 @@ with open(os.path.join(OUT_PATH, TCFILE), "w") as f:
 
     f.write(f'if [ "$1" = "add" ]; then\n')
     f.write(f'  echo "adding traffic control to all containers..."\n')
-    f.write(f"  sudo docker exec router tc qdisc add dev eth0 root handle 1: netem loss $TC_LOSS delay $TC_DELAY\n")
-    f.write(f"  sudo docker exec router tc qdisc add dev eth0 parent 1: handle 2: tbf rate $TC_BANDWIDTH burst 16kbit latency $TC_LATENCY\n")  
+    f.write(f"  sudo docker exec router tc qdisc add dev eth1 root handle 1: netem loss $TC_LOSS delay $TC_DELAY\n")
+    f.write(f"  sudo docker exec router tc qdisc add dev eth1 parent 1: handle 2: tbf rate $TC_BANDWIDTH burst 16kbit latency $TC_LATENCY\n")  
     f.write(f'fi\n\n')
 
     f.write(f'if [ "$1" = "del" ]; then\n')
     f.write(f'  echo "deleting traffic control from all containers..."\n')
-    f.write(f"  sudo docker exec router tc qdisc del dev eth0 parent 1: handle 2: tbf rate $TC_BANDWIDTH burst 16kbit latency $TC_LATENCY\n")  
-    f.write(f"  sudo docker exec router tc qdisc del dev eth0 root handle 1: netem loss $TC_LOSS delay $TC_DELAY\n")
+    f.write(f"  sudo docker exec router tc qdisc del dev eth1 parent 1: handle 2: tbf rate $TC_BANDWIDTH burst 16kbit latency $TC_LATENCY\n")  
+    f.write(f"  sudo docker exec router tc qdisc del dev eth1 root handle 1: netem loss $TC_LOSS delay $TC_DELAY\n")
     f.write(f'fi\n\n')    
 
     f.write(f'echo "Done."')

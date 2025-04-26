@@ -99,4 +99,4 @@ The tests can simply be run from the terminal, like:
 ./test-04.increase-subnet-netrange.sh
 # [...]
 ```
-During the test, the lab environment will repeatly be build up and cleaned up.
+During the test, the lab environment will repeatly be build up and teared down.

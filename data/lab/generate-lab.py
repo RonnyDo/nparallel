@@ -4,23 +4,26 @@ import shutil, os, argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--delay", type=int, default=1, help="Network delay in milliseconds")
 parser.add_argument("--loss", type=int, default=1, help="Network package loss rate in percent")
+parser.add_argument("--latency", type=int, default=500, help="Network latency in milliseconds")
 parser.add_argument("--bandwidth", type=str, default="100kbit", help="Network bandwith of each hosts in kbit, mbit or gbit")
 parser.add_argument("--num-subnets", type=int, default=2, help="Number of subnets. Default is 2, starting from 10.0.1.0/24")
 parser.add_argument("--num-subnet-hosts", type=int, default=2, help="Number of hosts per subnet. Default is 2, starting from 10.0.1.101")
-parser.add_argument("--out-dir", type=str, default="generic-lab", help="Output directory of generated files")
+parser.add_argument("--out-dir", type=str, default="generic.lab", help="Output directory of generated files")
 args = parser.parse_args()
 
 OUT_PATH=os.path.join(os.getcwd(), args.out_dir)
 DOCKERFILE="dockerfile"
 HTDOCS_DIR="htdocs"
+DATA_DIR="data"
+NPARALLEL_PATH="../../../nparallel/"
 COMPOSEFILE="compose.yml"
 HOSTSFILE="lab-hosts.txt"
 NETWORKSFILE="lab-networks.txt"
 TCFILE="traffic-control.sh"
-TC_BANDWIDTH=args.bandwidth
-TC_LATENCY="500ms" # packets with higher latency get dropped
-TC_LOSS=str(args.loss)+"%"
 TC_DELAY=str(args.delay)+"ms"
+TC_LATENCY=str(args.delay)+"ms" 
+TC_BANDWIDTH=args.bandwidth
+TC_LOSS=str(args.loss)+"%"
 PREFIX_TARGET_NET="10.0."
 PREFIX_SCANNER_NET="172.18."
 NUM_SUBNET=args.num_subnets
@@ -32,9 +35,13 @@ if os.path.exists(OUT_PATH):
     shutil.rmtree(OUT_PATH)
 os.mkdir(OUT_PATH)
 
+# generate dummy files for scanner
+DATA_PATH=os.path.join(OUT_PATH, DATA_DIR)
+os.mkdir(DATA_PATH)
+
 # create file containing all lab-hosts
 print (f"Create {HOSTSFILE}")
-with open(os.path.join(OUT_PATH, HOSTSFILE), "w") as f:
+with open(os.path.join(DATA_PATH, HOSTSFILE), "w") as f:
     for subnet_index in range(1, NUM_SUBNET + 1):     
         for host_index in range(101,NUM_SERVER_IN_SUBNET + 101):            
             f.write(f"{PREFIX_TARGET_NET}{subnet_index}.{host_index}\n")
@@ -42,7 +49,7 @@ with open(os.path.join(OUT_PATH, HOSTSFILE), "w") as f:
 
 # create file containing all class-C networks containing hosts
 print (f"Create {NETWORKSFILE}")
-with open(os.path.join(OUT_PATH, NETWORKSFILE), "w") as f:
+with open(os.path.join(DATA_PATH, NETWORKSFILE), "w") as f:
     for subnet_index in range(1, NUM_SUBNET + 1):            
         f.write(f"{PREFIX_TARGET_NET}{subnet_index}.0/24\n")            
 
@@ -109,12 +116,15 @@ with open(os.path.join(OUT_PATH, COMPOSEFILE), "w") as f:
     f.write(f"    image: debian\n")
     f.write(f"    hostname: scanner\n")
     f.write(f"    container_name: scanner\n")
-    f.write(f"    command: sh -c 'apt-get update && apt-get install iproute2 iputils-ping nmap wget -y && ip route add {PREFIX_TARGET_NET}0.0/16 via {PREFIX_SCANNER_NET}0.2 && sleep infinity'\n")
+    f.write(f"    command: sh -c 'apt-get update && apt-get install iproute2 iputils-ping nmap python3 wget -y && ip route add {PREFIX_TARGET_NET}0.0/16 via {PREFIX_SCANNER_NET}0.2 && sleep infinity'\n")
     f.write(f"    networks:\n")
     f.write(f"      net_scanner:\n")
     f.write(f"        ipv4_address: {PREFIX_SCANNER_NET}0.66\n")
     f.write(f"    cap_add:\n")
     f.write(f"      - NET_ADMIN\n")
+    f.write(f"    volumes:\n")
+    f.write(f"      - ./{DATA_DIR}/:/opt/data\n")  
+    f.write(f"      - {NPARALLEL_PATH}:/opt/nparallel\n")    
 
     for subnet_index in range(1, NUM_SUBNET + 1):     
         for host_index in range(101,NUM_SERVER_IN_SUBNET + 101):
@@ -131,17 +141,17 @@ with open(os.path.join(OUT_PATH, COMPOSEFILE), "w") as f:
             f.write(f"    cap_add:\n")
             f.write(f"      - NET_ADMIN\n")
             f.write(f"    volumes:\n")
-            f.write(f"      - ./htdocs/:/var/www/html\n\n")
+            f.write(f"      - ./{HTDOCS_DIR}/:/var/www/html\n\n")
 
 
 # create traffic-control.sh
 print ("Create traffic-control.sh")
 with open(os.path.join(OUT_PATH, TCFILE), "w") as f:
     f.write(f"#!/bin/sh\n")
-    f.write(f"# Limit network bandwidth on all docker hosts\n\n")
+    f.write(f"# Limit network speed by adapting troughput and network timing on the router\n\n")
 
     f.write(f'if [ -z "$1" ]; then\n')
-    f.write(f'  echo "Add or delete traffic control, e.g. bandwidth limitation to all containers"\n')
+    f.write(f'  echo "Add or delete traffic control, e.g. bandwidth limitation, on router"\n')
     f.write(f'  echo "Usage: traffic-control.sh [add|del]"\n')
     f.write(f'  exit 1\n')
     f.write(f'fi\n\n')
@@ -152,15 +162,15 @@ with open(os.path.join(OUT_PATH, TCFILE), "w") as f:
     f.write(f"TC_DELAY={TC_DELAY} # delay effects ping requests also\n\n")
 
     f.write(f'if [ "$1" = "add" ]; then\n')
-    f.write(f'  echo "adding traffic control to all containers..."\n')
-    f.write(f"  sudo docker exec router tc qdisc add dev eth1 root handle 1: netem loss $TC_LOSS delay $TC_DELAY\n")
-    f.write(f"  sudo docker exec router tc qdisc add dev eth1 parent 1: handle 2: tbf rate $TC_BANDWIDTH burst 16kbit latency $TC_LATENCY\n")  
+    f.write(f'  echo "adding traffic control to router..."\n')
+    f.write(f'  sudo docker-compose exec router tc qdisc add dev eth1 root handle 1: netem loss $TC_LOSS delay $TC_DELAY\n')
+    f.write(f'  sudo docker-compose exec router tc qdisc add dev eth1 parent 1: handle 2: tbf rate $TC_BANDWIDTH burst 16kbit latency $TC_LATENCY\n')  
     f.write(f'fi\n\n')
 
     f.write(f'if [ "$1" = "del" ]; then\n')
-    f.write(f'  echo "deleting traffic control from all containers..."\n')
-    f.write(f"  sudo docker exec router tc qdisc del dev eth1 parent 1: handle 2: tbf rate $TC_BANDWIDTH burst 16kbit latency $TC_LATENCY\n")  
-    f.write(f"  sudo docker exec router tc qdisc del dev eth1 root handle 1: netem loss $TC_LOSS delay $TC_DELAY\n")
+    f.write(f'  echo "deleting traffic control from router..."\n')
+    f.write(f'  sudo docker-compose exec router tc qdisc del dev eth1 parent 1: handle 2: tbf rate $TC_BANDWIDTH burst 16kbit latency $TC_LATENCY\n')  
+    f.write(f'  sudo docker-compose exec router tc qdisc del dev eth1 root handle 1: netem loss $TC_LOSS delay $TC_DELAY\n')
     f.write(f'fi\n\n')    
 
     f.write(f'echo "Done."')
@@ -168,5 +178,5 @@ with open(os.path.join(OUT_PATH, TCFILE), "w") as f:
 
 print ("\n# Run the following commands to start the lab:\n")
 print (f"cd {OUT_PATH}")
-print ("sudo docker-compose down --remove-orphans && sudo docker network prune --force")
+print ("sudo docker-compose down --remove-orphans && sudo docker container prune --force && sudo docker network prune --force")
 print ("sudo docker-compose build && sudo docker-compose up -d && sudo sh ./traffic-control.sh add")

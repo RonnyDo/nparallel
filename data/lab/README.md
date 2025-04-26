@@ -43,6 +43,7 @@ python ./generate-lab.py --num-subnets 3 --num-subnet-hosts 10 --bandwidth 100kb
 cd ./generic-lab
 # clean up old containers and networks
 sudo docker-compose down --remove-orphans
+sudo docker container prune --force
 sudo docker network prune --force
 # build images
 sudo docker-compose build
@@ -92,6 +93,10 @@ The lab comes also with some predefinied tests, which compares the performance o
 
 The tests can simply be run from the terminal, like:
 ```bash
-./test.compare_delay.sh
+./test-01.increase-delay.sh 
+./test-02.increase-delay-netrange.sh 
+./test-03.increase-subnet.sh
+./test-04.increase-subnet-netrange.sh
+# [...]
 ```
 During the test, the lab environment will repeatly be build up and cleaned up.

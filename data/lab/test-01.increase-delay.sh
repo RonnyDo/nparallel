@@ -4,11 +4,11 @@
 test_name=$(basename "$0")
 
 # network parameter
-DELAY_START=20
-DELAY_INCREMENT=20
-DELAY_MAX=120
+DELAY_START=0
+DELAY_INCREMENT=10
+DELAY_MAX=100
 
-LATENCY=500
+LATENCY=200
 LOSS=3
 BANDWIDTH=1000mbit
 NUM_SUBNETS=3
@@ -29,11 +29,11 @@ mkdir $RESULTS_DIR
 
 # generate result file
 cat <<EOT >> $RESULTS_DIR/$test_name.results.md
-# Results of $test_name
+# Results of $test_name ⏱️
 
 This test measures the scan performance with increasing router delay. Scan targets are the exact hosts (and not the network range).
 
-## Fixed parameters:
+## Fixed parameters 🛠️
 
 \`\`\`bash
 DELAY_START=$DELAY_START
@@ -54,10 +54,10 @@ NMAP_BASE_PARAMS=$NMAP_BASE_PARAMS
 PARALLELISM=$PARALLELISM    # sets --min-hostgroup (nmap) or --threads (nparallel)
 \`\`\`
 
-## Results
+## Results 📋
 
-| Network DELAY in ms | Nmap scan duration in secs | Nparallel scan duration in secs |
-|---|---|---|
+| Network DELAY in ms | Nmap scan duration in secs | Nparallel scan duration in secs | equal results | Nmap ports | Nparallel ports
+|---|---|---|---|---|---|
 EOT
 
 
@@ -99,13 +99,18 @@ do
 
     echo -e "\n\n\n###### run nparallel ######\n"
     #nparallel nmap ${NMAP_BASE_PARAMS} --threads $PARALLELISM --force-scan -iL /opt/data/lab-hosts.txt | tee /opt/data/nparallel.results.txt
-    sudo docker-compose exec scanner bash -c "python3 /opt/nparallel/nparallel.py nmap $NMAP_BASE_PARAMS --threads $PARALLELISM --force-scan -iL /opt/data/lab-hosts.txt | tee /opt/data/nparallel.results.txt"
+    sudo docker-compose exec scanner bash -c "python3 /opt/nparallel/nparallel.py nmap $NMAP_BASE_PARAMS -oN /opt/data/nparallel.results.txt --threads $PARALLELISM --force-scan -iL /opt/data/lab-hosts.txt | tee /opt/data/nparallel.log"
     cp data/nparallel.results.txt ../$RESULTS_DIR/nparallel.results.delay_${CURRENT_DELAY}ms.txt
+    cp data/nparallel.log ../$RESULTS_DIR/nparallel.delay_${CURRENT_DELAY}ms.log
     sleep $SECONDS_BETWEEN_STEPS
 
 
     echo -e "\n\n\n###### extract scan duration ######\n"
-    echo "| ${CURRENT_DELAY} | $(cat data/nmap.results.txt | grep "scanned in" | cut -d " " -f 19) | $(cat data/nparallel.results.txt | grep "Finished" | cut -d " " -f 6) |" >> ../$RESULTS_DIR/$test_name.results.md
+    # compare tests by checking if the same amount of ports have been found
+    NUM_NMAP_PORTS=$(cat "data/nmap.results.txt" | grep "/tcp open" | wc -l)
+    NUM_NPARALLEL_PORTS=$(cat "data/nparallel.results.txt" | grep "/tcp open" | wc -l)
+    EQUAL_NUM_PORTS=$(if [ $NUM_NMAP_PORTS -eq $NUM_NPARALLEL_PORTS ]; then echo "yes"; else echo "false"; fi)
+    echo "| ${CURRENT_DELAY} | $(cat data/nmap.results.txt | grep "scanned in" | cut -d " " -f 19) | $(cat data/nparallel.log | grep "Finished" | cut -d " " -f 6) | $EQUAL_NUM_PORTS | $NUM_NMAP_PORTS | $NUM_NPARALLEL_PORTS | " >> ../$RESULTS_DIR/$test_name.results.md
 
 
     echo -e "\n\n\n###### Cleanup docker environment ######\n"

@@ -1,14 +1,17 @@
 #!/bin/bash
 
+
+
+
 # get the name of the script
 test_name=$(basename "$0")
 
 # network parameter
-DELAY_START=0
-DELAY_INCREMENT=10
-DELAY_MAX=100
+LATENCY_START=0
+LATENCY_INCREMENT=10
+LATENCY_MAX=120
 
-LATENCY=200
+DELAY=10
 LOSS=3
 BANDWIDTH=1000mbit
 NUM_SUBNETS=3
@@ -31,17 +34,17 @@ mkdir $RESULTS_DIR
 cat <<EOT >> $RESULTS_DIR/$test_name.results.md
 # Results of $test_name ⏱️
 
-This test measures the scan performance with increasing router delay. Scan targets are the entire net ranges (and not only single hosts).
+This test measures the scan performance with increasing router latency. Scan targets are the entire net ranges (and not only single hosts).
 
 ## Fixed parameters 🛠️
 
 \`\`\`bash
-DELAY_START=$DELAY_START
-DELAY_INCREMENT=$DELAY_INCREMENT
-DELAY_MAX=$DELAY_MAX
+LATENCY_START=$LATENCY_START
+LATENCY_INCREMENT=$LATENCY_INCREMENT
+LATENCY_MAX=$LATENCY_MAX
 
+DELAY=$DELAY
 LOSS=$LOSS
-LATENCY=$LATENCY
 BANDWIDTH=$BANDWIDTH
 NUM_SUBNETS=$NUM_SUBNETS
 NUM_SUBNET_HOSTS=$NUM_SUBNET_HOSTS
@@ -56,18 +59,18 @@ PARALLELISM=$PARALLELISM    # sets --min-hostgroup (nmap) or --threads (nparalle
 
 ## Results 📋
 
-| Network DELAY in ms | Nmap scan duration in secs | Nparallel scan duration in secs | equal results | Nmap ports | Nparallel ports
+| Network LATENCY in ms | Nmap scan duration in secs | Nparallel scan duration in secs | equal results | Nmap ports | Nparallel ports
 |---|---|---|---|---|---|
 EOT
 
 
-for ((CURRENT_DELAY = DELAY_START ; CURRENT_DELAY <= DELAY_MAX ; CURRENT_DELAY=CURRENT_DELAY+DELAY_INCREMENT )) 
+for ((CURRENT_LATENCY = LATENCY_START ; CURRENT_LATENCY <= LATENCY_MAX ; CURRENT_LATENCY=CURRENT_LATENCY+LATENCY_INCREMENT )) 
 do 
     # generate lab
-    echo -e "\n\n\n###### Generate lab files with DELAY=$CURRENT_DELAY ######\n"
+    echo -e "\n\n\n###### Generate lab files with LATENCY=$CURRENT_LATENCY ######\n"
     sudo rm -rf $LAB_DIR
     sleep $SECONDS_BETWEEN_STEPS
-    python ./generate-lab.py --delay $CURRENT_DELAY --latency $LATENCY --loss $LOSS --bandwidth $BANDWIDTH --num-subnets $NUM_SUBNETS --num-subnet-hosts $NUM_SUBNET_HOSTS --out-dir $LAB_DIR
+    python ./generate-lab.py --delay $DELAY --latency $CURRENT_LATENCY --loss $LOSS --bandwidth $BANDWIDTH --num-subnets $NUM_SUBNETS --num-subnet-hosts $NUM_SUBNET_HOSTS --out-dir $LAB_DIR
 
     cd $LAB_DIR
 
@@ -86,22 +89,22 @@ do
     sleep 15 # manually set because a to short time would lead to the following error when running "sh ./traffic-control.sh"
     # OCI runtime exec failed: exec failed: unable to start container process: exec: "tc": executable file not found in $PATH: unknown
 
-    echo -e "\n\n\n###### apply network traffic (DELAY=${CURRENT_DELAY}ms) ######\n"
+    echo -e "\n\n\n###### apply network traffic (LATENCY=${CURRENT_LATENCY}ms) ######\n"
     sh ./traffic-control.sh add
     sleep $SECONDS_BETWEEN_STEPS
 
 
     echo -e "\n\n\n###### run nmap ######\n"
     sudo docker-compose exec scanner bash -c "nmap $NMAP_BASE_PARAMS --min-hostgroup=$PARALLELISM -oN /opt/data/nmap.results.txt -iL /opt/data/lab-hosts.txt"
-    cp data/nmap.results.txt ../$RESULTS_DIR/nmap.results.delay_${CURRENT_DELAY}ms.txt
+    cp data/nmap.results.txt ../$RESULTS_DIR/nmap.results.LATENCY_${CURRENT_LATENCY}ms.txt
     sleep $SECONDS_BETWEEN_STEPS
 
 
     echo -e "\n\n\n###### run nparallel ######\n"
     #nparallel nmap ${NMAP_BASE_PARAMS} --threads $PARALLELISM --force-scan -iL /opt/data/lab-hosts.txt | tee /opt/data/nparallel.results.txt
     sudo docker-compose exec scanner bash -c "python3 /opt/nparallel/nparallel.py nmap $NMAP_BASE_PARAMS -oN /opt/data/nparallel.results.txt --threads $PARALLELISM --force-scan -iL /opt/data/lab-hosts.txt | tee /opt/data/nparallel.log"
-    cp data/nparallel.results.txt ../$RESULTS_DIR/nparallel.results.delay_${CURRENT_DELAY}ms.txt
-    cp data/nparallel.log ../$RESULTS_DIR/nparallel.delay_${CURRENT_DELAY}ms.log
+    cp data/nparallel.results.txt ../$RESULTS_DIR/nparallel.results.LATENCY_${CURRENT_LATENCY}ms.txt
+    cp data/nparallel.log ../$RESULTS_DIR/nparallel.LATENCY_${CURRENT_LATENCY}ms.log
     sleep $SECONDS_BETWEEN_STEPS
 
 
@@ -110,7 +113,7 @@ do
     NUM_NMAP_PORTS=$(cat "data/nmap.results.txt" | grep "/tcp open" | wc -l)
     NUM_NPARALLEL_PORTS=$(cat "data/nparallel.results.txt" | grep "/tcp open" | wc -l)
     EQUAL_NUM_PORTS=$(if [ $NUM_NMAP_PORTS -eq $NUM_NPARALLEL_PORTS ]; then echo "yes"; else echo "false"; fi)
-    echo "| ${CURRENT_DELAY} | $(cat data/nmap.results.txt | grep "scanned in" | cut -d " " -f 19) | $(cat data/nparallel.log | grep "Finished" | cut -d " " -f 6) | $EQUAL_NUM_PORTS | $NUM_NMAP_PORTS | $NUM_NPARALLEL_PORTS | " >> ../$RESULTS_DIR/$test_name.results.md
+    echo "| ${CURRENT_LATENCY} | $(cat data/nmap.results.txt | grep "scanned in" | cut -d " " -f 19) | $(cat data/nparallel.log | grep "Finished" | cut -d " " -f 6) | $EQUAL_NUM_PORTS | $NUM_NMAP_PORTS | $NUM_NPARALLEL_PORTS | " >> ../$RESULTS_DIR/$test_name.results.md
 
 
     echo -e "\n\n\n###### Cleanup docker environment ######\n"

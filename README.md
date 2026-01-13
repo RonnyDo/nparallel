@@ -25,7 +25,7 @@ cd nparallel
 pip install .                       # zero dependency installation
 pip install .[with_office_export]   # install external libs
 
-# Variant B: Download raw script
+# Variant B: Download and use raw script
 wget https://raw.githubusercontent.com/RonnyDo/nparallel/refs/heads/main/nparallel/nparallel.py
 ```
 
@@ -53,7 +53,7 @@ $ nparallel ls
 Cmd id     Finished	Nmap base command
 ---        ---     	---
 ab4e8efa   3    	nmap -T4 -v --top-ports 10
-9d9c55a7   1    	nmap -T 5
+9d9c55a7   1    	nmap -T5
 c178e8fa   64    	nmap -T4 -v --top-ports 100
 ```
 
@@ -70,10 +70,10 @@ nmap -T4 -v --top-ports 10
 [+] Hosts with open ports (2):
 45.33.32.156 127.0.0.1
 
-[+] Ports open TCP (2):
+[+] Ports open TCP (3):
 22,80,443
 
-[+] Ports open UDP (0):
+[+] Ports open UDP (1):
 69
 ```
 

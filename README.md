@@ -43,7 +43,7 @@ $ nparallel nmap -v --top-ports 100 -oX results.xml -iL data/targets.txt
 [+] XML file saved at '/home/user/results.xml'
 ```
 
-### Show scans (details): ```nparallel ls```
+### Show scans and scan details: ```nparallel ls```
 ```
 # show scan overview
 $ nparallel ls
@@ -58,11 +58,11 @@ c178e8fa   64    	nmap -T4 -v --top-ports 100
 ```
 
 ```
-# show scan details if scan with cmd id 'ab4e8efa'
+# show scan details of scan with cmd id 'ab4e8efa'
 $ nparallel ls ab4e8efa
 
 [*] Nmap base command:
-nmap -T4 -v --top-ports 10
+ab4e8efa: nmap -T4 -v --top-ports 10
 
 [+] Hosts finished (3):
 45.33.32.156 127.0.0.1 172.1.2.3
@@ -72,6 +72,27 @@ nmap -T4 -v --top-ports 10
 
 [+] Ports open TCP (3):
 22,80,443
+
+[+] Ports open UDP (1):
+69
+```
+
+```
+# show merged scan details of scans with cmd ids 'ab4e8efa' and '9d9c55a7'
+$ nparallel ls ab4e8efa 9d9c55a7
+
+[*] Nmap base command:
+ab4e8efa: nmap -T4 -v --top-ports 10
+9d9c55a7: nmap -T5
+
+[+] Hosts finished (3):
+45.33.32.156 127.0.0.1 172.1.2.3
+
+[+] Hosts with open ports (2):
+45.33.32.156 127.0.0.1 140.40.40.4
+
+[+] Ports open TCP (3):
+22,80,443,444
 
 [+] Ports open UDP (1):
 69

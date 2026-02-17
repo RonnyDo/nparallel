@@ -524,7 +524,7 @@ class Nparallel:
 
         # ls
         parser_ls = sub_parsers.add_parser('ls', help='Show cache')    
-        parser_ls.add_argument('cmd_id', nargs='?', help='Inspect current results of <cmd_id>')
+        parser_ls.add_argument('cmd_id', nargs='*', help='Inspect results of <cmd_id>. Merges results if multiple cmd_ids are provided.')
         parser_ls.add_argument('-g', '--grouped', action='store_true', help='Group IP addresses and ports for better readability')
         
         # rm
@@ -720,52 +720,58 @@ class Nparallel:
             print ("[*] Cache is empty")            
 
 
+    def get_cmd_info (self, cmd_ids):
+        cmd_ids_info = list()
+        hosts_finished = set()
+        hosts_with_open_ports = set()
+        ports_tcp_open = set()
+        ports_udp_open = set()
 
-    def get_cmd_info (self, cmd_id):
-        scaninfo_path = self.get_scaninfo_path(cmd_id)
+        for cmd_id in cmd_ids:
 
-        cmd_info = None
+            scaninfo_path = self.get_scaninfo_path(cmd_id)
 
-        if (os.path.exists(scaninfo_path)):
+            cmd_info = None
 
-            hosts_finished = list()
-            hosts_with_open_ports = list()
-            ports_tcp_open = set()
-            ports_udp_open = set()
-            
-            for scanfile_xml_name in self.get_finished_scans(cmd_id):
-                ip = ipaddress.IPv4Address(scanfile_xml_name.split("_")[0])            
-                hosts_finished.append(ip)
-                ports_tcp, ports_udp = self.get_open_ports (cmd_id, scanfile_xml_name)
-                if len(ports_tcp) > 0 or len(ports_udp) > 0:
-                    hosts_with_open_ports.append(ip)
-                    ports_tcp_open.update(ports_tcp)
-                    ports_udp_open.update(ports_udp)
+            if (os.path.exists(scaninfo_path)):
+                cmd_ids_info.append({
+                    "cmd_id": cmd_id,
+                    "nmap_base_cmd": self.get_nmap_base_cmd(cmd_id)
+                })
+                
+                for scanfile_xml_name in self.get_finished_scans(cmd_id):          
+                    ip_str = scanfile_xml_name.split("_")[0]
+                    hosts_finished.update([ip_str])
+                    ports_tcp, ports_udp = self.get_open_ports (cmd_id, scanfile_xml_name)
+                    if len(ports_tcp) > 0 or len(ports_udp) > 0:
+                        hosts_with_open_ports.update([ip_str])
+                        ports_tcp_open.update(ports_tcp)
+                        ports_udp_open.update(ports_udp)
 
-            cmd_info = {
-                "cmd_id": cmd_id,
-                "nmap_base_cmd": self.get_nmap_base_cmd(cmd_id),
-                "hosts_finished": sorted(hosts_finished),
-                "hosts_with_open_ports": sorted(hosts_with_open_ports),
-                "ports_tcp_open": sorted(ports_tcp_open, key=int),
-                "ports_udp_open": sorted(ports_udp_open, key=int),
-            }
-        else:
-            print (f"[!] Unkown cmd id '{cmd_id}'")
+            else:
+                print (f"[!] Unkown cmd id '{cmd_id}'")        
+
+        cmd_info = {
+            "cmd_ids_info": cmd_ids_info,
+            "hosts_finished": sorted(ipaddress.IPv4Address(ip_str) for ip_str in hosts_finished), # convert to IPv4 to sort correctly
+            "hosts_with_open_ports": sorted(ipaddress.IPv4Address(ip_str) for ip_str in hosts_with_open_ports), # convert to IPv4 to sort correctly
+            "ports_tcp_open": sorted(ports_tcp_open, key=int),
+            "ports_udp_open": sorted(ports_udp_open, key=int),
+        }
 
         return cmd_info
 
 
     def print_cmd_info(self, cmd_info, grouped):
         if cmd_info: 
-            print (f"[*] Nmap base command:\n{cmd_info['nmap_base_cmd']}")
+            print (f"[*] Nmap base command(s):")
+            print (f"{'\n'.join(x.get("cmd_id")+": "+x.get("nmap_base_cmd") for x in cmd_info['cmd_ids_info'])}")
 
             print (f"\n[+] Hosts finished (\033[92m{len(cmd_info['hosts_finished'])}\033[0m):")
             if grouped:
                 print (f"{' '.join(self.group_ip_addresses(cmd_info['hosts_finished']))}")
             else:
                 print (f"{' '.join([str(x) for x in cmd_info['hosts_finished']])}")
-            
 
             print (f"\n[+] Hosts with open ports (\033[92m{len(cmd_info['hosts_with_open_ports'])}\033[0m):")            
             if grouped:
@@ -784,7 +790,7 @@ class Nparallel:
                 print (f"{','.join(self.group_ports(cmd_info['ports_udp_open']))}")
             else:         
                 print (f"{','.join([str(x) for x in cmd_info['ports_udp_open']])}")             
-            
+           
     
     # lock object to work thread-safe with print function
     s_print_lock = Lock()

@@ -21,14 +21,14 @@ SECONDS_BETWEEN_STEPS=5 # seconds to sleep between each command; 10 secs should 
 # scan parameter
 #NMAP_BASE_PARAMS="-T4 -Pn -v --top-ports 100 -sV -O"
 NMAP_BASE_PARAMS="-T4 -Pn -v --top-ports 1000 -sV"
-PARALLELISM=100     # sets --min-hostgroup (nmap) or --threads (nparallel)
+PARALLELISM=32     # sets --min-hostgroup (nmap) or --threads (nparallel)
 
 # clean up all results
 sudo rm -rf $RESULTS_DIR
 mkdir $RESULTS_DIR
 
 # generate result file
-cat <<EOT >> $RESULTS_DIR/$test_name.results.md
+cat <<EOT >> $test_name.results.md
 # Results of $test_name ⏱️
 
 This test measures the scan performance with increasing router delay. Scan targets are the entire net ranges (and not only single hosts).
@@ -110,7 +110,7 @@ do
     NUM_NMAP_PORTS=$(cat "data/nmap.results.txt" | grep "/tcp open" | wc -l)
     NUM_NPARALLEL_PORTS=$(cat "data/nparallel.results.txt" | grep "/tcp open" | wc -l)
     EQUAL_NUM_PORTS=$(if [ $NUM_NMAP_PORTS -eq $NUM_NPARALLEL_PORTS ]; then echo "yes"; else echo "false"; fi)
-    echo "| ${CURRENT_DELAY} | $(cat data/nmap.results.txt | grep "scanned in" | cut -d " " -f 19) | $(cat data/nparallel.log | grep "Finished" | cut -d " " -f 6) | $EQUAL_NUM_PORTS | $NUM_NMAP_PORTS | $NUM_NPARALLEL_PORTS | " >> ../$RESULTS_DIR/$test_name.results.md
+    echo "| ${CURRENT_DELAY} | $(cat data/nmap.results.txt | grep "scanned in" | cut -d " " -f 19) | $(cat data/nparallel.log | grep "Finished" | cut -d " " -f 6) | $EQUAL_NUM_PORTS | $NUM_NMAP_PORTS | $NUM_NPARALLEL_PORTS | " >> ../$test_name.results.md
 
 
     echo -e "\n\n\n###### Cleanup docker environment ######\n"

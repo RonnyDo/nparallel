@@ -3,13 +3,15 @@ Speed up Nmap scans by running them in parallel.
 
 
 ## Features:
-**HIGHLIGHTS**:
-* faster than native nmap scans (multithreaded scans with one host per thread)
-* interrupt and continue scans at any time
-* reduce and extend target list without having to scan finished hosts with the same command again
+
+**2-6 times faster** than native nmap scans, but with the same output. Nparallel starts multithreaded scans with one host per thread.
+
+See [About speed and reliability](data/README.md) for detailed information about how this was measured.
 
 **even more**:
 * use native nmap arguments
+* interrupt and continue scans at any time
+* reduce and extend target list without having to scan finished hosts with the same command again
 * depenedency free for almost all features
 * additional stdout output format ```-ol/out-log```
 * export all hosts with open ports as 
@@ -33,19 +35,21 @@ wget https://raw.githubusercontent.com/RonnyDo/nparallel/refs/heads/main/nparall
 ### Run scan: ```nparallel nmap```
 ```
 # Usage: nparallel nmap [nmap-args] -iL TARGETS_FILE
-$ nparallel nmap -v --top-ports 100 -oX results.xml -iL data/targets.txt 
-
-[*] Cmd id: cabb60dc | Nmap base cmd: nmap -v --top-ports 100 -oX results.xml | Threads: 100
+$ nparallel nmap -v --top-ports 100 -oX results.xml -iL targets.txt 
+```
+```
+[*] Cmd id: cabb60dc | Nmap base cmd: nmap -v --top-ports 100 -oX results.xml | Threads: 32
 [*] Start: 21:49:03
 [+] Progress: 3/3 hosts
 [+] End: 21:49:06 (Finished in 3.11 seconds)
 
 [+] XML file saved at '/home/user/results.xml'
 ```
+***Hint:*** *The minimum number of threads used by nparallel should be equal to the amount of cores the system offers. Less threads lead to a slower performance. More threads doesn't increase the performance but can be better, because sometimes hosts become unresponsive and block single threads. The amount of threads can be set with ```--threads <num>```.*
 
-### Show scans and scan details: ```nparallel ls```
+### List scans and show scan details: ```nparallel ls```
 ```
-# show scan overview
+# list all scans
 $ nparallel ls
 
 [*] Cache contains 3 scans:

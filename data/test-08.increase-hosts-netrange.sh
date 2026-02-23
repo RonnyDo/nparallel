@@ -1,21 +1,18 @@
 #!/bin/bash
 
-
-
-
 # get the name of the script
 test_name=$(basename "$0")
 
 # network parameter
-LATENCY_START=0
-LATENCY_INCREMENT=10
-LATENCY_MAX=120
+NUM_SUBNET_HOSTS_START=4
+NUM_SUBNET_HOSTS_INCREMENT=4
+NUM_SUBNET_HOSTS_MAX=16
 
 DELAY=10
+LATENCY=200
 LOSS=3
 BANDWIDTH=1000mbit
-NUM_SUBNETS=3
-NUM_SUBNET_HOSTS=5
+NUM_SUBNETS=5
 LAB_DIR=$test_name.lab
 RESULTS_DIR=$test_name.results
 SCANNER_INPUT_FILE=lab-networks.txt
@@ -24,30 +21,29 @@ SECONDS_BETWEEN_STEPS=5 # seconds to sleep between each command; 10 secs should 
 # scan parameter
 #NMAP_BASE_PARAMS="-T4 -Pn -v --top-ports 100 -sV -O"
 NMAP_BASE_PARAMS="-T4 -Pn -v --top-ports 1000 -sV"
-PARALLELISM=100     # sets --min-hostgroup (nmap) or --threads (nparallel)
+PARALLELISM=32     # sets --min-hostgroup (nmap) or --threads (nparallel)
 
 # clean up all results
 sudo rm -rf $RESULTS_DIR
 mkdir $RESULTS_DIR
 
 # generate result file
-cat <<EOT >> $RESULTS_DIR/$test_name.results.md
+cat <<EOT >> $test_name.results.md
 # Results of $test_name ⏱️
 
-This test measures the scan performance with increasing router latency. Scan targets are the entire net ranges (and not only single hosts).
+This test measures the scan performance with an increasing number of hosts in each subnet. The number of subnets is $NUM_SUBNETS and stays constant. Scan targets are the entire net ranges (and not only single hosts).
 
 ## Fixed parameters 🛠️
 
 \`\`\`bash
-LATENCY_START=$LATENCY_START
-LATENCY_INCREMENT=$LATENCY_INCREMENT
-LATENCY_MAX=$LATENCY_MAX
+NUM_SUBNET_HOSTS_START=$NUM_SUBNET_HOSTS_START
+NUM_SUBNET_HOSTS_INCREMENT=$NUM_SUBNET_HOSTS_INCREMENT
+NUM_SUBNET_HOSTS_MAX=$NUM_SUBNET_HOSTS_MAX
 
 DELAY=$DELAY
 LOSS=$LOSS
 BANDWIDTH=$BANDWIDTH
 NUM_SUBNETS=$NUM_SUBNETS
-NUM_SUBNET_HOSTS=$NUM_SUBNET_HOSTS
 LAB_DIR=$LAB_DIR
 RESULTS_DIR=$RESULTS_DIR
 SCANNER_INPUT_FILE=$SCANNER_INPUT_FILE
@@ -59,18 +55,18 @@ PARALLELISM=$PARALLELISM    # sets --min-hostgroup (nmap) or --threads (nparalle
 
 ## Results 📋
 
-| Network LATENCY in ms | Nmap scan duration in secs | Nparallel scan duration in secs | equal results | Nmap ports | Nparallel ports
-|---|---|---|---|---|---|
+| Host per subnet | Hosts total | Nmap scan duration in secs | Nparallel scan duration in secs | equal results | Nmap ports | Nparallel ports
+|---|---|---|---|---|---|---|
 EOT
 
 
-for ((CURRENT_LATENCY = LATENCY_START ; CURRENT_LATENCY <= LATENCY_MAX ; CURRENT_LATENCY=CURRENT_LATENCY+LATENCY_INCREMENT )) 
+for ((CURRENT_NUM_SUBNET_HOSTS = NUM_SUBNET_HOSTS_START ; CURRENT_NUM_SUBNET_HOSTS <= NUM_SUBNET_HOSTS_MAX ; CURRENT_NUM_SUBNET_HOSTS=CURRENT_NUM_SUBNET_HOSTS+NUM_SUBNET_HOSTS_INCREMENT )) 
 do 
     # generate lab
-    echo -e "\n\n\n###### Generate lab files with LATENCY=$CURRENT_LATENCY ######\n"
+    echo -e "\n\n\n###### Generate lab files with CURRENT_NUM_SUBNET_HOSTS=$CURRENT_NUM_SUBNET_HOSTS ######\n"
     sudo rm -rf $LAB_DIR
     sleep $SECONDS_BETWEEN_STEPS
-    python ./generate-lab.py --delay $DELAY --latency $CURRENT_LATENCY --loss $LOSS --bandwidth $BANDWIDTH --num-subnets $NUM_SUBNETS --num-subnet-hosts $NUM_SUBNET_HOSTS --out-dir $LAB_DIR
+    python ./generate-lab.py --delay $DELAY --latency $LATENCY --loss $LOSS --bandwidth $BANDWIDTH --num-subnets $NUM_SUBNETS --num-subnet-hosts $CURRENT_NUM_SUBNET_HOSTS --out-dir $LAB_DIR
 
     cd $LAB_DIR
 
@@ -113,7 +109,7 @@ do
     NUM_NMAP_PORTS=$(cat "data/nmap.results.txt" | grep "/tcp open" | wc -l)
     NUM_NPARALLEL_PORTS=$(cat "data/nparallel.results.txt" | grep "/tcp open" | wc -l)
     EQUAL_NUM_PORTS=$(if [ $NUM_NMAP_PORTS -eq $NUM_NPARALLEL_PORTS ]; then echo "yes"; else echo "false"; fi)
-    echo "| ${CURRENT_LATENCY} | $(cat data/nmap.results.txt | grep "scanned in" | cut -d " " -f 19) | $(cat data/nparallel.log | grep "Finished" | cut -d " " -f 6) | $EQUAL_NUM_PORTS | $NUM_NMAP_PORTS | $NUM_NPARALLEL_PORTS | " >> ../$RESULTS_DIR/$test_name.results.md
+    echo "| ${CURRENT_NUM_SUBNET_HOSTS} | $(bc <<< "$NUM_SUBNETS*$CURRENT_NUM_SUBNET_HOSTS") | $(cat data/nmap.results.txt | grep "scanned in" | cut -d " " -f 19) | $(cat data/nparallel.log | grep "Finished" | cut -d " " -f 6) | $EQUAL_NUM_PORTS | $NUM_NMAP_PORTS | $NUM_NPARALLEL_PORTS | " >> ../$test_name.results.md
 
 
     echo -e "\n\n\n###### Cleanup docker environment ######\n"

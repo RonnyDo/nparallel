@@ -81,11 +81,11 @@ To evaluate the scan **Speed**, it had been measured how long it takes for a too
 
 Test Case | Result Data | Speed Evaluation | Reliability  Evaluation
 --|--|--|--
-Increasing router delay | [Hosts]()/[Netrange]() | With growing router delay the **speed advantage of nparallel** increases. | even
-Increasing router latency | [Hosts]()/[Netrange]() | The latency doesn't influence the test speed. | (nearly) even
-Increasing amount of subnets | [Hosts]()/[Netrange]() | With growing amount of subnets the **speed advantage of nparallel** increases. | (nearly) even
-Increasing amount of hosts | [Hosts]()/[Netrange]() | With growing amount of hosts the **speed advantage of nparallel** increases. | even
-Increasing scanner parallelism  | [Hosts]()/[Netrange]() | The test was performed on a system with 16 cores. Running nparallel with less threads than cores leads to a slower scan performance. Running it with more than 16 cores doesn't let to a better one. Hower running it with threads double the amount of cores can be good, if some threads hang, e.g. due to inresponsive hosts. | (nearly) even
+Increasing router delay | [Hosts](test-01.increase-delay.sh.results.md)/[Netrange](test-02.increase-delay-netrange.sh.results.md) | With growing router delay the **speed advantage of nparallel** increases. | even
+Increasing router latency | [Hosts](test-03.increase-latency.sh.results.md)/[Netrange](test-04.increase-latency-netrange.sh.results.md) | The latency doesn't influence the test speed. | (nearly) even
+Increasing amount of subnets | [Hosts](test-05.increase-subnet.sh.results.md)/[Netrange](test-06.increase-subnet-netrange.sh.results.md) | With growing amount of subnets the **speed advantage of nparallel** increases. | (nearly) even
+Increasing amount of hosts | [Hosts](test-07.increase-hosts.sh.results.md)/[Netrange](test-08.increase-hosts-netrange.sh.results.md) | With growing amount of hosts the **speed advantage of nparallel** increases. | even
+Increasing scanner parallelism  | [Hosts](test-09.increase-parallelism.sh.results.md)/[Netrange](test-10.increase-parallelism-netrange.sh.results.md) | The test was performed on a system with 16 cores. Running nparallel with less threads than cores leads to a slower scan performance. Running it with more than 16 cores doesn't let to a better one. Hower running it with threads double the amount of cores can be good, if some threads hang, e.g. due to inresponsive hosts. | (nearly) even
 
 
 
